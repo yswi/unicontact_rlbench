@@ -11,6 +11,13 @@ from scipy.spatial.transform import Rotation as R
 from rlbench.demo_utils import *
 from rlbench.read_npy import check_and_make
 import shutil
+from d3fields.fusion import Fusion
+from uniform_contact.config.single_task import Config
+from uniform_contact.utils_keypoint import KeyPointGenerator, KeyPointTracker, farthest_point_sampling, get_convex_hull_points, is_point_in_hull 
+from kmeans_pytorch import kmeans
+import torch
+import numpy as np
+
 
 # task specific param.
 task_name = 'sweep_to_dustpan'
@@ -34,12 +41,15 @@ contact_point_color = ["blue5", "orange5", "orange5", "pink5", "indigo5"]
 relative_pose_tracker = {}
 
 
-
 if __name__ == '__main__':
     vis_o3d = o3d.visualization.Visualizer()
     vis_o3d.create_window()
     grasped = False
-    for variation_num in range(100):
+    dataset_config = Config()
+    KPG = KeyPointGenerator(dataset_config)
+    KPT = KeyPointTracker()
+
+    for variation_num in range(12, 100):
         example_path = os.path.join(episodes_path, EPISODE_FOLDER % variation_num)
         contact_dict = np.load(os.path.join(example_path, "contact_info.pkl"), allow_pickle=True)
         object_poses_dict = np.load(os.path.join(example_path, "object_poses.pkl"), allow_pickle=True)
@@ -61,10 +71,20 @@ if __name__ == '__main__':
                         "target_contact": [],
                         "approach_angle": [],
                         "source_pose": [object_poses_dict[0]],
-                        "contact_force": []} 
+                        "contact_force": [],
+                        "source_pose_cur": [],
+                        "source_pose_prev": [],
+                        "gripper_pose": [],
+                        "keypoints_info": [], 
+                        "pointcloud": []} 
         contact_pcd_prev = []
+        #### Keypoint Extraction at t = 0 ######
+        KPG.set_obs(example_path)
+        keypoints, candidate_pixels, keypoints_features = KPG.get_keypoints()
+        tracked_keypoints = KPT.track_keypoints_full_episodes(os.path.join(example_path, FRONT_RGB_FOLDER), candidate_pixels, idx = variation_num)
 
         for idx_t in range(1, len(time_stamps)):
+            #### Extract Keyframes and Contact locations ######
             time_stamp = time_stamps[idx_t]
             time_stamp_prev = time_stamps[idx_t-1]
             contact_pcd = []
@@ -80,11 +100,11 @@ if __name__ == '__main__':
             contacts = []
             tot_contact_force = np.array([0., 0., 0.])
             approach_angle = np.array([0., 0., 0.])
-
             if load_dim_data_i.keyframe:
                 # visualize 3d contact
-                # plt = Plotter(N=1, axes=1)
                 pcd = np.load(os.path.join(example_path, f"{FRONT_PCD_FOLDER}/{time_stamp}.pkl"), allow_pickle=True).reshape(-1,3)
+                pcd_prev = np.load(os.path.join(example_path, f"{FRONT_PCD_FOLDER}/{keyframe_infos["timestamps"][-1]}.pkl"), allow_pickle=True).reshape(-1,3)
+
                 rgb = np.array(Image.open(os.path.join(example_path, f"{FRONT_RGB_FOLDER}/{time_stamp}.png")))
                 pcd_ls = np.load(os.path.join(example_path, f"{LEFT_SHOULDER_PCD_FOLDER}/{time_stamp}.pkl"), allow_pickle=True).reshape(-1,3)
                 rgb_ls = np.array(Image.open(os.path.join(example_path, f"{LEFT_SHOULDER_RGB_FOLDER}/{time_stamp}.png")))
@@ -105,7 +125,7 @@ if __name__ == '__main__':
                 pcd_rs_o3d = o3d.geometry.PointCloud()
                 pcd_rs_o3d.points = o3d.utility.Vector3dVector(pcd_rs)
                 pcd_rs_o3d.colors = o3d.utility.Vector3dVector(rgb_rs.reshape(-1,3)/255)
-                
+
 
             for source_idx, source_contact_cand in enumerate(contact_dict_i.keys()) :
                 pts = contact_dict_i[source_contact_cand]['points']
@@ -201,16 +221,36 @@ if __name__ == '__main__':
                             tot_contact_force -= f_i
                             contact_indexes.append(i)
 
-                    
-            
+            # points = points // v * v
+            contact_pcd = np.stack(contact_pcd, axis = 0)  if len(contact_pcd) > 0 else np.array([])
+            contact_pcd = np.round(contact_pcd, 4)
+            contact_pcd = np.unique(contact_pcd , axis = 0)
+
             ### Filter 1.2: Get the chamfer-distance between the previous keyframe's contacts and the current. Remove when it's the same.
-            cd = 0.1
-            if len(contact_pcd_prev) > 2 and len(contact_pcd) > 0:
-                cd = chamfer_distance_directional(np.stack(contact_pcd, axis = 0), np.stack(contact_pcd_prev, axis = 0) )
+            cd = 1
+            if len(contact_pcd_prev) > 3 and len(contact_pcd) > 0:
+                cd = chamfer_distance_directional(contact_pcd, contact_pcd_prev )
             
             # Save keyframes     
             grasped = True if np.linalg.norm(load_dim_data_i.gripper_touch_forces) > 0.01 else False
-            if load_dim_data_i.keyframe and len(contact_pcd)>2 and cd > 1e-4 and np.linalg.norm(approach_angle) > 1e-2:
+            if load_dim_data_i.keyframe and len(contact_pcd)>3 and cd > 1e-4 and np.linalg.norm(approach_angle) > 1e-2:
+                # 3d keypoints @ keypoints from the previous keyframe (current = result)
+                keypoints_pixel = tracked_keypoints[0, keyframe_infos["timestamps"][-1], :].int().detach().cpu().numpy()
+                keypoints_pixel[:,0] = np.clip(keypoints_pixel[:,0], 0, rgb.shape[0]-1)
+                keypoints_pixel[:,1] = np.clip(keypoints_pixel[:,1], 0, rgb.shape[1]-1)
+                keypoints_3d = rgb[keypoints_pixel[:,0], keypoints_pixel[:,1]]
+
+                # add keypoints at left finger 
+                left_finger_pose = contact_dict_i[source_contact_cand]["labels"]["Panda_leftfinger_force_contact"]
+                left_finger_features = np.ones_like(keypoints_features[0])
+                breakpoint()
+                left_finger_info = np.concatenate( [left_finger_pose, left_finger_features] , axis = -1)
+
+                keypoints_info = np.concatenate( [keypoints_3d, keypoints_features] , axis = -1)
+                keypoints_info = np.concatenate([keypoints_info, left_finger_info], axis = 0)
+                keyframe_infos["keypoints_info"].append(keypoints_info)
+
+                # Read pointcloud 
                 pcd_o3d = pcd_o3d.voxel_down_sample(voxel_size=0.02)
                 pcd_ls_o3d = pcd_ls_o3d.voxel_down_sample(voxel_size=0.02)
                 pcd_rs_o3d = pcd_rs_o3d.voxel_down_sample(voxel_size=0.02)
@@ -230,17 +270,29 @@ if __name__ == '__main__':
 
                 vis_o3d.update_renderer()
                 vis_o3d.capture_screen_image(os.path.join(keyframe_path, f"contact_vis_{time_stamp}.png") , do_render=True)
+
+
+                target_hull_points = get_convex_hull_points(contact_pcd)
+                target_hull_points = np.unique(target_hull_points , axis = 0)
+                target_hull_points = farthest_point_sampling(target_hull_points, 4)
+
                 keyframe_infos["timestamps"].append(time_stamp)
                 keyframe_infos["approach_angle"].append(approach_angle)
                 keyframe_infos["source_pose"].append(object_poses_i) 
-                keyframe_infos["target_contact"].append(np.stack(contact_pcd, axis = 0))
+                keyframe_infos["target_contact"].append(target_hull_points)
                 keyframe_infos["contact_force"].append(tot_contact_force)
 
                 # Source contact: rigid transform target contact 
                 ## Get the delta transform of source object between keypoints
                 source_pose_cur = keyframe_infos["source_pose"][-1][cnt_handle_i[0]]
                 source_pose_prev = keyframe_infos["source_pose"][-2][cnt_handle_i[0]]
-                new_contact = np.stack(contact_pcd, axis = 0)
+                keyframe_infos["source_pose_cur"].append(source_pose_cur) 
+                keyframe_infos["source_pose_prev"].append(source_pose_prev) 
+                keyframe_infos["gripper_pose"].append(load_dim_data_i.gripper_pose)
+                keyframe_infos["pointcloud"].append( pcd_prev )
+
+
+                new_contact = copy.copy(target_hull_points) #np.stack(contact_pcd, axis = 0)
 
                 # delta: prev -> cur
                 delta_orientation = R.from_quat(source_pose_cur[3:7]).as_matrix() @ R.from_quat(source_pose_prev[3:7]).inv().as_matrix()
@@ -252,7 +304,7 @@ if __name__ == '__main__':
                 new_contact = R.from_matrix(delta_orientation).inv().apply(new_contact)
                 new_contact[...,:3] += source_pose_cur[:3]
                 
-                # TODO: build a transform matrix and apply to the point
+                # build a transform matrix and apply to the point
                 delta_position = np.array(source_pose_cur[:3]) - np.array(source_pose_prev[:3])
                 keyframe_infos["source_contact"].append(new_contact - delta_position)
 
@@ -265,16 +317,18 @@ if __name__ == '__main__':
                 contact_pcd_prev = copy.copy(contact_pcd)
 
 
+
         # Save post-processed dataset
         with open(os.path.join(example_path, "dataset.pkl"), 'wb') as f:
             pickle.dump(keyframe_infos, f)
 
 
-
-        # Visualize the keyframe and save it.
+        # Visualization.
         for i in range( len(keyframe_infos["timestamps"][1:])):
             timestamp = keyframe_infos["timestamps"][i]
-            # plt = Plotter(N=1, axes=1)
+
+
+            # Read pointcloud and rgb
             pcd = np.load(os.path.join(example_path, f"{FRONT_PCD_FOLDER}/{timestamp}.pkl"), allow_pickle=True).reshape(-1,3)
             rgb = np.array(Image.open(os.path.join(example_path, f"{FRONT_RGB_FOLDER}/{timestamp}.png")))
                 
@@ -290,42 +344,85 @@ if __name__ == '__main__':
             c_force = keyframe_infos["contact_force"][i]
             approach_angle = keyframe_infos["approach_angle"][i]
 
-            # Visualize approach angle @ target
-            keypoint_contact = []
-            for pt_i in c_target:
-                arrow = o3d.geometry.TriangleMesh.create_arrow(cylinder_radius=0.005, cone_radius=0.005, 
-                                            cylinder_height=np.linalg.norm(approach_angle)*0.15, cone_height=0.01)
-                arrow.paint_uniform_color([1, 0, 0])  
-                T = get_rotation_matrix(np.array(approach_angle), np.array([0,0,1]))
-                arrow.rotate(T, center=(0, 0, 0))  # Apply rotation
-                arrow.translate((pt_i[0], pt_i[1], pt_i[2]))   # Translation vector (x, y, z)
-                keypoint_contact.append(arrow)
+            # # Visualize approach angle @ target
+            # 
+            # for pt_i in c_target:
+            #     arrow = o3d.geometry.TriangleMesh.create_arrow(cylinder_radius=0.005, cone_radius=0.005, 
+            #                                 cylinder_height=np.linalg.norm(approach_angle)*0.15, cone_height=0.01)
+            #     arrow.paint_uniform_color([1, 0, 0])  
+            #     T = get_rotation_matrix(np.array(approach_angle), np.array([0,0,1]))
+            #     arrow.rotate(T, center=(0, 0, 0))  # Apply rotation
+            #     arrow.translate((pt_i[0], pt_i[1], pt_i[2]))   # Translation vector (x, y, z)
+            #     keypoint_contact.append(arrow)
+
+            # # Visualize contact force
+            # for pt_i in c_source:
+            #     arrow = o3d.geometry.TriangleMesh.create_arrow(cylinder_radius=0.005, cone_radius=0.005, 
+            #                                 cylinder_height= np.clip(np.linalg.norm(c_force)* 0.0001, 0.0001, 0.1), cone_height=0.01)
+            #     arrow.paint_uniform_color([ 0, 1, 0])  
+            #     T = get_rotation_matrix( -np.array(c_force),  np.array([0,0,1]))
+            #     arrow.rotate(T, center=(0, 0, 0))  # Apply rotation
+            #     arrow.translate((pt_i[0], pt_i[1], pt_i[2]))   # Translation vector (x, y, z)
+            #     keypoint_contact.append(arrow)
+            
+            # target_hull_points = get_convex_hull_points(c_target)
+            # source_hull_points = get_convex_hull_points(c_source)
+
+            # target_hull_points = np.unique(target_hull_points , axis = 0)
+            # source_hull_points = np.unique(source_hull_points , axis = 0)
+
+            # c_target = farthest_point_sampling(target_hull_points, 4)
+            # c_source = farthest_point_sampling(source_hull_points, 4)
+
+
+            # print("c target for visualization", c_target)
+            # import matplotlib.pyplot as plt
+            # fig = plt.figure()
+            # ax = fig.add_subplot(projection='3d')
+            # ax.scatter(c_target[:,0], 
+            #         c_target[:,1], 
+            #         c_target[:,2], marker=2)
+            # # if len(grids_inside) > 0:
+            # #     ax.scatter(grids_inside[:,0], grids_inside[:,1], grids_inside[:,2], marker=5)
+            # ax.set_xlabel('x')
+            # ax.set_ylabel('y')
+            # plt.show()
+
+
 
             # Visualize target contact
+            # print(c_target.shape,  f"contact_dataset_{variation_num}_{timestamp}")
+            # cluster_ids_x, c_target = kmeans(
+            #     X= torch.tensor(c_target),
+            #     num_clusters=4,
+            #     distance="euclidean",
+            #     device="cuda",
+            #     tqdm_flag=False,
+            # )
+
+            # # Visualize source contact
+            # cluster_ids_x, c_source = kmeans(
+            #     X= torch.tensor(c_source),
+            #     num_clusters=4,
+            #     distance="euclidean",
+            #     device="cuda",
+            #     tqdm_flag=False,
+            # )
+            keypoint_contact = []
             for pt_i in c_target:
                 sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.015)
-                sphere.paint_uniform_color([1, 0.35, 0])  # RGB value for green color
+                # sphere.paint_uniform_color([1, 0.35, 0])  # RGB value for green color
+                sphere.paint_uniform_color([0, 0., 1])  # RGB value for green color
+
                 sphere.translate((pt_i[0], pt_i[1], pt_i[2]))   # Translation vector (x, y, z)
                 keypoint_contact.append(sphere) # reaction force
 
-            # Visualize source contact
             for pt_i in c_source:
                 sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.015)
-                sphere.paint_uniform_color([0,0,1])  # RGB value for green color
+                sphere.paint_uniform_color([1,0,0])  # RGB value for green color
                 sphere.translate((pt_i[0], pt_i[1], pt_i[2]))   # Translation vector (x, y, z)
                 keypoint_contact.append(sphere) # reaction force
                 
-            # Visualize contact force
-            for pt_i in c_target:
-                arrow = o3d.geometry.TriangleMesh.create_arrow(cylinder_radius=0.005, cone_radius=0.005, 
-                                            cylinder_height= np.clip(np.linalg.norm(c_force)* 0.0001, 0.0001, 0.1), cone_height=0.01)
-                arrow.paint_uniform_color([ 0, 1, 0])  
-                T = get_rotation_matrix( -np.array(c_force),  np.array([0,0,1]))
-                arrow.rotate(T, center=(0, 0, 0))  # Apply rotation
-                arrow.translate((pt_i[0], pt_i[1], pt_i[2]))   # Translation vector (x, y, z)
-                keypoint_contact.append(arrow)
-
-
             pcd_o3d = pcd_o3d.voxel_down_sample(voxel_size=0.02)
             vis_o3d.add_geometry(pcd_o3d)
 
@@ -341,7 +438,7 @@ if __name__ == '__main__':
 
             prev_contact = copy.copy(contact_dict_i)
             vis_o3d.update_renderer()
-            vis_o3d.capture_screen_image(os.path.join(keyframe_path, f"contact_dataset_{timestamp}.png"), do_render=True)
+            vis_o3d.capture_screen_image(os.path.join(keyframe_path, f"contact_dataset_{variation_num}_{timestamp}.png"), do_render=True)
 
             vis_o3d.remove_geometry(pcd_o3d, reset_bounding_box=False)
             for contact_i in keypoint_contact:

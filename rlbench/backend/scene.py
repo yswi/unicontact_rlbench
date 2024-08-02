@@ -281,17 +281,26 @@ class Scene(object):
 
 
             # Save contacts
-            contact_info = {"contact_info":{}, "relative_pose":{}}
+            contact_info = {"contact_info":{}, "relative_pose":{}, "pose": []}
             contact_objects_relative_poses = {}
             for source_object_candidate in kwargs['contact'][0]:
                 source_contact_info = source_object_candidate.get_contact()
 
+                # Aboslute pose of a source object in contact
+                world_quat = sim.simGetObjectQuaternion(contact_handles[0], -1)
+                world_position = sim.simGetObjectPosition(contact_handles[0], -1)
+                world_pose = world_position + world_quat
+                
+
                 # Relative pose between two objects in contact.
                 for source_contact_info_i in source_contact_info:
                     contact_handles = source_contact_info_i["contact_handles"]
+
+                    # Relative pose between two objects in contact
                     relative_quat = sim.simGetObjectQuaternion(contact_handles[0], contact_handles[1])
                     relative_position = sim.simGetObjectPosition(contact_handles[0], contact_handles[1])
                     relative_pose = relative_position + relative_quat
+
 
                     if contact_handles[0] not in contact_objects_relative_poses.keys():
                         contact_objects_relative_poses[contact_handles[0]] = {}
@@ -301,6 +310,7 @@ class Scene(object):
 
                 contact_info["contact_info"][source_object_candidate.get_name()] = source_contact_info
             contact_info["relative_pose"] = contact_objects_relative_poses
+            contact_info["pose"] = world_pose
             contact_info["labels"] = labels
 
             # distractor object labels - will ignore contact when made here (e.g. broom stand)
