@@ -200,7 +200,8 @@ def save_demo(scene_data, demo, example_path, variation):
     with open(os.path.join(example_path, "contact_info.pkl"), 'wb') as f:
         pickle.dump(tot_contact_info, f)
 
-    # Save contact info
+    # # Save contact info
+    # for rigid transform for finding source contacts
     with open(os.path.join(example_path, "object_poses.pkl"), 'wb') as f:
         pickle.dump(tot_pose_info, f)
 

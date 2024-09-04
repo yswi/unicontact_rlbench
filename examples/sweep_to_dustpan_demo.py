@@ -189,7 +189,7 @@ if __name__ == '__main__':
     task = env.get_task(SweepToDustpan)
 
 
-    for i in range (2):
+    for i in range (110):
         SAVE_PATH = os.path.abspath( os.path.join(os.path.dirname(__file__), '../../dataset/'))
         variation_path = os.path.join(SAVE_PATH, task.get_name(), VARIATIONS_ALL_FOLDER)
         episodes_path = os.path.join(variation_path, EPISODES_FOLDER)

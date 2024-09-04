@@ -260,14 +260,34 @@ class Scene(object):
         front_mask = get_mask(self._cam_front_mask,
                               fc_mask_fn) if fc_ob.mask else None
 
-
+        left_finger_pose = None
         object_poses = None
         contact_info = None
         contact_est = None
         labels = {} # Mesh idx -> object name
 
-        if 'contact' in kwargs.keys():
 
+        # left finger
+        left_finger_handle = Shape('Panda_leftfinger_force_contact').get_handle()
+        left_finger_world_quat = sim.simGetObjectQuaternion(left_finger_handle, -1)
+        left_finger_world_position = sim.simGetObjectPosition(left_finger_handle, -1)
+        left_finger_pose = left_finger_world_position + left_finger_world_quat   
+
+        # right finger
+        right_finger_handle = Shape('Panda_rightfinger_force_contact').get_handle()
+        right_finger_world_quat = sim.simGetObjectQuaternion(right_finger_handle, -1)
+        right_finger_world_position = sim.simGetObjectPosition(right_finger_handle, -1)
+        right_finger_pose = right_finger_world_position + right_finger_world_quat   
+
+        # gripper_center
+        gripper_center_handle = Shape('Panda_gripper_visual').get_handle()
+        gripper_center_world_quat = sim.simGetObjectQuaternion(gripper_center_handle, -1)
+        gripper_center_world_position = sim.simGetObjectPosition(gripper_center_handle, -1)
+        gripper_center_pose = gripper_center_world_position + gripper_center_world_quat   
+
+        gripper_keypoints = np.stack([left_finger_pose, right_finger_pose, gripper_center_pose])
+
+        if 'contact' in kwargs.keys():
             # Track object poses of interest (tool, gripper, object in contact)
             object_poses = {}
             for source_object_candidate in kwargs['contact'][0]:
@@ -281,36 +301,49 @@ class Scene(object):
 
 
             # Save contacts
-            contact_info = {"contact_info":{}, "relative_pose":{}, "pose": []}
+            contact_info = {"contact_info":{}, "relative_pose":{}, "pose": {}}
             contact_objects_relative_poses = {}
+
             for source_object_candidate in kwargs['contact'][0]:
                 source_contact_info = source_object_candidate.get_contact()
-
-                # Aboslute pose of a source object in contact
-                world_quat = sim.simGetObjectQuaternion(contact_handles[0], -1)
-                world_position = sim.simGetObjectPosition(contact_handles[0], -1)
-                world_pose = world_position + world_quat
                 
+                # Save pose: source object candidates
+                for source_object_candidate_ in kwargs['contact'][0]:
+                    source_object_handle = source_object_candidate_.get_handle()
+                   
+                    world_quat = sim.simGetObjectQuaternion(source_object_handle, -1)
+                    world_position = sim.simGetObjectPosition(source_object_handle, -1)
+                    world_pose = world_position + world_quat          
+                    contact_info["pose"][source_object_handle] = world_pose
+
 
                 # Relative pose between two objects in contact.
                 for source_contact_info_i in source_contact_info:
                     contact_handles = source_contact_info_i["contact_handles"]
+                    
+
+                    # Aboslute pose of a source object in contact
+                    world_quat = sim.simGetObjectQuaternion(contact_handles[0], -1)
+                    world_position = sim.simGetObjectPosition(contact_handles[0], -1)
+                    world_pose = world_position + world_quat
+
 
                     # Relative pose between two objects in contact
                     relative_quat = sim.simGetObjectQuaternion(contact_handles[0], contact_handles[1])
                     relative_position = sim.simGetObjectPosition(contact_handles[0], contact_handles[1])
                     relative_pose = relative_position + relative_quat
 
-
                     if contact_handles[0] not in contact_objects_relative_poses.keys():
                         contact_objects_relative_poses[contact_handles[0]] = {}
-
                     contact_objects_relative_poses[contact_handles[0]][contact_handles[1]] = relative_pose
 
+                    # Save pose: all the objects in interest.
+                    contact_info["pose"][contact_handles[0]] = world_pose
 
                 contact_info["contact_info"][source_object_candidate.get_name()] = source_contact_info
+                
+
             contact_info["relative_pose"] = contact_objects_relative_poses
-            contact_info["pose"] = world_pose
             contact_info["labels"] = labels
 
             # distractor object labels - will ignore contact when made here (e.g. broom stand)
@@ -371,6 +404,7 @@ class Scene(object):
             contact_info=contact_info,
             contact_est=contact_est,
             ee_velocity=ee_velocity,
+            gripper_keypoints = gripper_keypoints,
             object_poses = object_poses,
             keyframe = False if 'keyframe' not in kwargs.keys() else kwargs['keyframe']
         )

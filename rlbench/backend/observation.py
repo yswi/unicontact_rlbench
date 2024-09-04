@@ -38,6 +38,7 @@ class Observation(object):
                  contact_info: dict = None,
                  contact_est: np.ndarray = None,
                  ee_velocity: np.ndarray = None,
+                 gripper_keypoints: np.array = None,
                  object_poses: dict = None,
                  keyframe: bool = False
                  ):
@@ -77,6 +78,7 @@ class Observation(object):
         self.ee_velocity = ee_velocity
         self.contact_goal = None
         self.ignore_collision = False  # For perceiver-actor baseline
+        self.gripper_keypoints = gripper_keypoints
         self.object_poses = object_poses
         self.keyframe = keyframe
 
@@ -107,6 +109,7 @@ class Observation(object):
                 'normals': np.array(cnt_normal),
                 "cnt_handles": np.array(cnt_handles),
                 "relative_pose": contact_info["relative_pose"],
+                "pose": contact_info["pose"],
                 "labels": contact_info["labels"],
             }
         return contact_info_refined

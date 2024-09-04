@@ -11,7 +11,7 @@ from scipy.spatial.transform import Rotation as R
 from rlbench.demo_utils import *
 from rlbench.read_npy import check_and_make
 import shutil
-from d3fields.fusion import Fusion
+# from d3fields.fusion import Fusion
 from uniform_contact.config.single_task import Config
 from uniform_contact.utils_keypoint import KeyPointGenerator, KeyPointTracker, farthest_point_sampling, get_convex_hull_points, is_point_in_hull 
 from kmeans_pytorch import kmeans
@@ -32,7 +32,8 @@ z_upper = 1.8
 z_lower = 0.
 
 # pathes.
-SAVE_PATH = os.path.abspath( os.path.join(os.path.dirname(__file__), '../../dataset/'))
+# SAVE_PATH = os.path.abspath( os.path.join(os.path.dirname(__file__), '../../dataset/'))
+SAVE_PATH = '/z/yswi/dataset'
 variation_path = os.path.join(SAVE_PATH, task_name, VARIATIONS_ALL_FOLDER)
 episodes_path = os.path.join(variation_path, EPISODES_FOLDER)
 
@@ -49,13 +50,19 @@ if __name__ == '__main__':
     KPG = KeyPointGenerator(dataset_config)
     KPT = KeyPointTracker()
 
-    for variation_num in range(12, 100):
+    for variation_num in range(110):
         example_path = os.path.join(episodes_path, EPISODE_FOLDER % variation_num)
         contact_dict = np.load(os.path.join(example_path, "contact_info.pkl"), allow_pickle=True)
         object_poses_dict = np.load(os.path.join(example_path, "object_poses.pkl"), allow_pickle=True)
+        low_dim_info_dict = np.load(os.path.join(example_path, LOW_DIM_PICKLE), allow_pickle=True)
+
         keyframe_path = os.path.join(example_path, "keyframe_summary")
-        if os.path.isdir(keyframe_path):
+        try:
+            os.path.isdir(keyframe_path)
+            os.system(f'sudo chmod -R 777 {keyframe_path}')
             shutil.rmtree(keyframe_path)
+        except:
+            pass
         check_and_make(keyframe_path) 
         assert len(contact_dict) == len(object_poses_dict)
 
@@ -65,7 +72,6 @@ if __name__ == '__main__':
 
 
         time_stamps = list(contact_dict.keys())
-
         keyframe_infos = {"timestamps": [0], # keyframe always includes reset 
                         "source_contact": [],
                         "target_contact": [],
@@ -76,8 +82,10 @@ if __name__ == '__main__':
                         "source_pose_prev": [],
                         "gripper_pose": [],
                         "keypoints_info": [], 
-                        "pointcloud": []} 
+                        "pointcloud": [],
+                        "gripper_open": []} 
         contact_pcd_prev = []
+
         #### Keypoint Extraction at t = 0 ######
         KPG.set_obs(example_path)
         keypoints, candidate_pixels, keypoints_features = KPG.get_keypoints()
@@ -88,8 +96,10 @@ if __name__ == '__main__':
             time_stamp = time_stamps[idx_t]
             time_stamp_prev = time_stamps[idx_t-1]
             contact_pcd = []
-            prev_contact = contact_dict[time_stamp_prev] 
+            prev_contact_dict_i = contact_dict[time_stamp_prev] 
             contact_dict_i = contact_dict[time_stamp]
+            prev_kf_contact_dict_i = contact_dict[keyframe_infos["timestamps"][-1]] 
+
             object_poses_i = object_poses_dict[time_stamp]
             contact_dict_prev = contact_dict[idx_t-1] if idx_t !=0 else None
             object_poses_prev = object_poses_dict[idx_t-1]  if idx_t !=0 else None
@@ -127,6 +137,29 @@ if __name__ == '__main__':
                 pcd_rs_o3d.colors = o3d.utility.Vector3dVector(rgb_rs.reshape(-1,3)/255)
 
 
+                # Pointcloud Feat
+                params = {
+                    'patch_h': rgb.shape[0] // 10,
+                    'patch_w': rgb.shape[1] // 10,
+                }
+                dino_features = KPG.extract_dinov2_features(rgb[np.newaxis, ...], params)
+                from torch.nn.functional import interpolate
+
+                interpolated_feature_grid = (
+                        interpolate(
+                            dino_features.permute(
+                                0, 3, 1, 2
+                            ),  # float32 [num_cams, feature_dim, patch_h, patch_w]
+                            size=(KPG.H, KPG.W),
+                            mode="bilinear",
+                        )
+                        .permute(0, 2, 3, 1)
+                        .squeeze(0)
+                    )  # float32 [H, W, feature_dim]
+                dino_features_flat = interpolated_feature_grid.reshape(
+                        -1, interpolated_feature_grid.shape[-1]
+                    ).detach().cpu().numpy()
+                
             for source_idx, source_contact_cand in enumerate(contact_dict_i.keys()) :
                 pts = contact_dict_i[source_contact_cand]['points']
                 forces = contact_dict_i[source_contact_cand]['forces']
@@ -161,17 +194,20 @@ if __name__ == '__main__':
                         if np.linalg.norm(f_i) > 0:
                             ### Filter 1: Remove contact haven't move in the world frame 
                             ### Filter 1.1 : Directly remove that was at the previous timeframe
-                            if len(contact_dict_prev[source_contact_cand]['points']) > 0: # Given valid prev contact
-                                if pt_i in contact_dict_prev[source_contact_cand]['points']: # check if there's static contact
-                                    continue
+                            # if len(contact_dict_prev[source_contact_cand]['points']) > 0: # Given valid prev contact
+                            #     if pt_i in contact_dict_prev[source_contact_cand]['points']: # check if there's static contact
+                            #         continue
 
                             if grasped:
                                 ### Approach angle @ grasping = delta tool pose
                                 approach_angle = relative_pose[i][:3]
 
                                 ### Filter 2.1: Remove noisy contacts near grippers -todo: not sure why this does not solve 2.2
+                                # print(source_contact_cand, np.linalg.norm(np.array(load_dim_data_i.gripper_pose[:3]) - pt_i[:3]) < 0.06)
                                 if np.linalg.norm(np.array(load_dim_data_i.gripper_pose[:3]) - pt_i[:3]) < 0.06:
                                     continue
+
+            
 
                             else:
                                 ### Approach angle @ grasping = gripper pose                            
@@ -221,33 +257,51 @@ if __name__ == '__main__':
                             tot_contact_force -= f_i
                             contact_indexes.append(i)
 
-            # points = points // v * v
+
             contact_pcd = np.stack(contact_pcd, axis = 0)  if len(contact_pcd) > 0 else np.array([])
             contact_pcd = np.round(contact_pcd, 4)
-            contact_pcd = np.unique(contact_pcd , axis = 0)
+            # contact_pcd = np.unique(contact_pcd , axis = 0)
 
             ### Filter 1.2: Get the chamfer-distance between the previous keyframe's contacts and the current. Remove when it's the same.
             cd = 1
             if len(contact_pcd_prev) > 3 and len(contact_pcd) > 0:
                 cd = chamfer_distance_directional(contact_pcd, contact_pcd_prev )
-            
+            cd_flag = True if len(contact_pcd_prev) == 0 else True if cd > 1e-4 else False
+
             # Save keyframes     
             grasped = True if np.linalg.norm(load_dim_data_i.gripper_touch_forces) > 0.01 else False
-            if load_dim_data_i.keyframe and len(contact_pcd)>3 and cd > 1e-4 and np.linalg.norm(approach_angle) > 1e-2:
+            if load_dim_data_i.keyframe:
+                print(len(contact_pcd) , cd_flag , np.linalg.norm(approach_angle) > 1e-2)
+
+            if load_dim_data_i.keyframe and len(contact_pcd)>3 and cd_flag and np.linalg.norm(approach_angle) > 1e-2:
                 # 3d keypoints @ keypoints from the previous keyframe (current = result)
                 keypoints_pixel = tracked_keypoints[0, keyframe_infos["timestamps"][-1], :].int().detach().cpu().numpy()
                 keypoints_pixel[:,0] = np.clip(keypoints_pixel[:,0], 0, rgb.shape[0]-1)
                 keypoints_pixel[:,1] = np.clip(keypoints_pixel[:,1], 0, rgb.shape[1]-1)
-                keypoints_3d = rgb[keypoints_pixel[:,0], keypoints_pixel[:,1]]
 
-                # add keypoints at left finger 
-                left_finger_pose = contact_dict_i[source_contact_cand]["labels"]["Panda_leftfinger_force_contact"]
-                left_finger_features = np.ones_like(keypoints_features[0])
-                breakpoint()
-                left_finger_info = np.concatenate( [left_finger_pose, left_finger_features] , axis = -1)
+                keypoints_3d = pcd.reshape(rgb.shape[0], rgb.shape[1], 3)[keypoints_pixel[:,1], keypoints_pixel[:,0]]
+
+
+                # import open3d as o3d
+                # point_cloud = o3d.geometry.PointCloud()
+                # point_cloud.points = o3d.utility.Vector3dVector(pcd)
+                # point_cloud.paint_uniform_color([0, 0, 0])      
+
+
+                # kpt_point_cloud = o3d.geometry.PointCloud()
+                # kpt_point_cloud.points = o3d.utility.Vector3dVector(keypoints_3d)
+                # # o3d.visualization.draw_geometries([point_cloud, kpt_point_cloud])
+                # o3d.visualization.draw_geometries([point_cloud, kpt_point_cloud])
+
 
                 keypoints_info = np.concatenate( [keypoints_3d, keypoints_features] , axis = -1)
-                keypoints_info = np.concatenate([keypoints_info, left_finger_info], axis = 0)
+                gripper_keypoints_poses = low_dim_info_dict[keyframe_infos["timestamps"][-1]].gripper_keypoints[..., :3]
+                gripper_features = np.ones((gripper_keypoints_poses.shape[0], keypoints_features.shape[-1]))
+                # gripper_features = np.stack([np.ones(keypoints_features.shape[-1]), -np.ones(keypoints_features.shape[-1]), np.zeros(keypoints_features.shape[-1])])
+
+                gripper_info = np.concatenate( [gripper_keypoints_poses, gripper_features], axis = -1)
+
+                keypoints_info = np.concatenate([gripper_info, keypoints_info], axis = 0)
                 keyframe_infos["keypoints_info"].append(keypoints_info)
 
                 # Read pointcloud 
@@ -263,7 +317,6 @@ if __name__ == '__main__':
 
                 vis_o3d.reset_view_point()
                 cntrl = vis_o3d.get_view_control()
-
                 cntrl.set_up([0, 0, 1])
                 cntrl.set_front([0.9, 0.45, 0.4])
                 cntrl.set_zoom(0.2)
@@ -271,30 +324,37 @@ if __name__ == '__main__':
                 vis_o3d.update_renderer()
                 vis_o3d.capture_screen_image(os.path.join(keyframe_path, f"contact_vis_{time_stamp}.png") , do_render=True)
 
-
                 target_hull_points = get_convex_hull_points(contact_pcd)
                 target_hull_points = np.unique(target_hull_points , axis = 0)
                 target_hull_points = farthest_point_sampling(target_hull_points, 4)
 
+
+                pcd_feat = np.concatenate([ pcd, dino_features_flat], axis = -1)
+
+
+
+
+                # Save keyframe infos
                 keyframe_infos["timestamps"].append(time_stamp)
                 keyframe_infos["approach_angle"].append(approach_angle)
                 keyframe_infos["source_pose"].append(object_poses_i) 
                 keyframe_infos["target_contact"].append(target_hull_points)
                 keyframe_infos["contact_force"].append(tot_contact_force)
 
-                # Source contact: rigid transform target contact 
-                ## Get the delta transform of source object between keypoints
                 source_pose_cur = keyframe_infos["source_pose"][-1][cnt_handle_i[0]]
                 source_pose_prev = keyframe_infos["source_pose"][-2][cnt_handle_i[0]]
                 keyframe_infos["source_pose_cur"].append(source_pose_cur) 
                 keyframe_infos["source_pose_prev"].append(source_pose_prev) 
                 keyframe_infos["gripper_pose"].append(load_dim_data_i.gripper_pose)
-                keyframe_infos["pointcloud"].append( pcd_prev )
+                keyframe_infos["pointcloud"].append( pcd_feat )
+                keyframe_infos["pointcloud"].append( keyframe_infos.gripper_open )
 
 
                 new_contact = copy.copy(target_hull_points) #np.stack(contact_pcd, axis = 0)
 
                 # delta: prev -> cur
+
+
                 delta_orientation = R.from_quat(source_pose_cur[3:7]).as_matrix() @ R.from_quat(source_pose_prev[3:7]).inv().as_matrix()
                 new_contact[...,:3] -= source_pose_cur[:3]
                 
@@ -319,10 +379,16 @@ if __name__ == '__main__':
 
 
         # Save post-processed dataset
-        with open(os.path.join(example_path, "dataset.pkl"), 'wb') as f:
+        dataset_path = os.path.join(example_path, "dataset_without_robot.pkl")
+        if os.path.exists(dataset_path):
+            os.remove(dataset_path)
+
+        with open(dataset_path, 'wb') as f:
+            breakpoint()
             pickle.dump(keyframe_infos, f)
 
-
+        print("timestamps", keyframe_infos["timestamps"])
+        # breakpoint()
         # Visualization.
         for i in range( len(keyframe_infos["timestamps"][1:])):
             timestamp = keyframe_infos["timestamps"][i]
@@ -436,7 +502,7 @@ if __name__ == '__main__':
             cntrl.set_front([0.71723555337395828, 0.59891705380412286, 0.35619029133167218 ])
             cntrl.set_zoom(0.23)
 
-            prev_contact = copy.copy(contact_dict_i)
+            prev_contact_dict_i = copy.copy(contact_dict_i)
             vis_o3d.update_renderer()
             vis_o3d.capture_screen_image(os.path.join(keyframe_path, f"contact_dataset_{variation_num}_{timestamp}.png"), do_render=True)
 

@@ -4,7 +4,7 @@ import copy
 import pickle
 import open3d as o3d
 from random import uniform as u
-from vedo import settings, Points, Arrows, Plotter
+# from vedo import settings, Points, Arrows
 from PIL import Image
 from scipy.linalg import logm, expm
 from rlbench.backend.const import *
@@ -21,7 +21,7 @@ variation_path = os.path.join(SAVE_PATH, task_name, VARIATIONS_ALL_FOLDER)
 episodes_path = os.path.join(variation_path, EPISODES_FOLDER)
 example_path = os.path.join(episodes_path, EPISODE_FOLDER % variation_num)
 
-settings.default_font = "Calco"
+# settings.default_font = "Calco"
 contact_point_color = ["blue5", "orange5", "orange5", "pink5", "indigo5"]
 relative_pose_tracker = {}
 
@@ -121,7 +121,7 @@ if __name__ == '__main__':
         if vis and load_dim_data_i.keyframe:
 
             # visualize 3d contact
-            plt = Plotter(N=1, axes=1)
+            # plt = Plotter(N=1, axes=1)
             pcd = np.load(os.path.join(example_path, f"{FRONT_PCD_FOLDER}/{time_stamp}.pkl"), allow_pickle=True).reshape(-1,3)
             rgb = np.array(Image.open(os.path.join(example_path, f"{FRONT_RGB_FOLDER}/{time_stamp}.png")))
 
@@ -273,7 +273,7 @@ if __name__ == '__main__':
             prev_contact = copy.copy(contact_dict_i)
             vis_o3d.update_renderer()
 
-            vis_o3d.capture_screen_image(f"{example_path}/keyframe_vis/contact_vis_{time_stamp}.png", do_render=True)
+            vis_o3d.capture_screen_image(f"{example_path}/keyframe_summary/contact_vis_{time_stamp}.png", do_render=True)
 
             vis_o3d.remove_geometry(pcd_o3d, reset_bounding_box=False)
             vis_o3d.remove_geometry(pcd_ls_o3d, reset_bounding_box=False)
