@@ -11,6 +11,12 @@ class HangFrameOnHanger(Task):
         success_sensor = ProximitySensor('success')
         frame = Shape('frame')
         frame_detector = Shape('frame_detector')
+        
+        self.tool_visual_name = 'broom'
+        self.tool_name = ['broom', 'Panda_leftfinger_force_contact', 'Panda_rightfinger_respondable']
+        self.target_name = 'clothes_hanger'
+        self.distractor_names = []
+        
         self.register_graspable_objects([frame])
         self.register_success_conditions(
             [DetectedCondition(frame_detector, success_sensor),

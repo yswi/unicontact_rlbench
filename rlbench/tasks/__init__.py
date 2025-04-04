@@ -114,6 +114,7 @@ from rlbench.tasks.wipe_desk import WipeDesk
 # from rlbench.tasks.wipe_desk_hd import WipeDeskHd
 # from rlbench.tasks.wipe_desk_hd2 import WipeDeskHd2
 from rlbench.tasks.sweep_to_dustpan import SweepToDustpan
+# from rlbench.tasks.sweep_to_dustpan_triangle import SweepToDustpanTriangle
 
 # from rlbench.tasks.sweep_to_dustpan1 import SweepToDustpan1
 # from rlbench.tasks.sweep_to_dustpan2 import SweepToDustpan2
@@ -229,6 +230,7 @@ FS95_V1 = {
         StackWine,
         StraightenRope,
         SweepToDustpan,
+        # SweepToDustpanTriangle,
         TakeCupOutFromCabinet,
         TakeFrameOffHanger,
         TakeLidOffSaucepan,

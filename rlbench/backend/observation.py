@@ -89,18 +89,21 @@ class Observation(object):
         if contact_info is None:
             return contact_info_refined
         
-        for source_object_candidate, contact_info_i in contact_info["contact_info"].items():
+        contact_info_i = contact_info["contact_info"]
+        for source_object_candidate in contact_info_i["relative_pose"].keys():
             cnt_pts = []
             cnt_force = []
             cnt_normal = []
             cnt_handles = []
 
-            for i, cnt in enumerate(contact_info_i):
-                if cnt['contact_handles'][1] not in contact_info['distractor_labels']:
-                    cnt_pts.append(cnt['contact'][:3])
-                    cnt_force.append(cnt['contact'][3:6])
-                    cnt_normal.append(cnt['contact'][6:9])
-                    cnt_handles.append(cnt['contact_handles'])
+            contact = contact_info_i["contact"]
+            target_info = contact_info_i["target_info"]
+            contact_handles = contact_info_i["contact_handles"]
+            for i, (cnt, cnt_hdl) in enumerate( zip(contact, contact_handles)):
+                cnt_pts.append(cnt[:3])
+                cnt_force.append(cnt[3:6])
+                cnt_normal.append(cnt[6:9])
+                cnt_handles.append(cnt_hdl)
 
             contact_info_refined[source_object_candidate] = {
                 'points_estimated': self.contact_est,
@@ -108,10 +111,11 @@ class Observation(object):
                 'forces': np.array(cnt_force),
                 'normals': np.array(cnt_normal),
                 "cnt_handles": np.array(cnt_handles),
-                "relative_pose": contact_info["relative_pose"],
-                "pose": contact_info["pose"],
-                "labels": contact_info["labels"],
+                "relative_pose": contact_info_i["relative_pose"][source_object_candidate],
+                "pose": contact_info["pose"][source_object_candidate],
+                "labels": contact_info["source_label"],
             }
+
         return contact_info_refined
 
     def get_low_dim_data(self) -> np.ndarray:

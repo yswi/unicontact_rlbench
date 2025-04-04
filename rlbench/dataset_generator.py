@@ -114,13 +114,13 @@ def save_demo(scene_data, demo, example_path, variation):
 
         # Save poincloud to pkl
         with open(os.path.join(left_shoulder_pcd_path, PCD_FORMAT % i), 'wb') as f:
-            pickle.dump(obs.left_shoulder_point_cloud, f)
+            pickle.dump( np.float16(obs.left_shoulder_point_cloud), f)
         with open(os.path.join(right_shoulder_pcd_path, PCD_FORMAT % i), 'wb') as f:
-            pickle.dump(obs.right_shoulder_point_cloud, f) 
+            pickle.dump(np.float16(obs.right_shoulder_point_cloud), f) 
         with open(os.path.join(overhead_pcd_path, PCD_FORMAT % i), 'wb') as f:
-            pickle.dump(obs.overhead_point_cloud, f)             
+            pickle.dump(np.float16(obs.overhead_point_cloud), f)             
         with open(os.path.join(front_pcd_path, PCD_FORMAT % i), 'wb') as f:
-            pickle.dump(obs.front_point_cloud, f)
+            pickle.dump(np.float16(obs.front_point_cloud), f)
 
         left_shoulder_rgb.save(
             os.path.join(left_shoulder_rgb_path, IMAGE_FORMAT % i))

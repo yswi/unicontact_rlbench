@@ -264,7 +264,7 @@ class Scene(object):
         object_poses = None
         contact_info = None
         contact_est = None
-        labels = {} # Mesh idx -> object name
+        source_label = {} # Mesh idx -> object name
 
 
         # left finger
@@ -287,12 +287,15 @@ class Scene(object):
 
         gripper_keypoints = np.stack([left_finger_pose, right_finger_pose, gripper_center_pose])
 
+
         if 'contact' in kwargs.keys():
+            distractor_labels = [d.get_handle() for d in kwargs['contact'][2]]
+
             # Track object poses of interest (tool, gripper, object in contact)
             object_poses = {}
             for source_object_candidate in kwargs['contact'][0]:
                 source_object_handle = source_object_candidate.get_handle()
-                labels[source_object_candidate.get_name()] = source_object_handle
+                source_label[source_object_candidate.get_name()] = source_object_handle
 
                 quat = sim.simGetObjectQuaternion(source_object_handle, -1)
                 position = sim.simGetObjectPosition(source_object_handle, -1)
@@ -301,53 +304,63 @@ class Scene(object):
 
 
             # Save contacts
-            contact_info = {"contact_info":{}, "relative_pose":{}, "pose": {}}
+            contact_info = {"contact_info": {"target_info": [] , "contact": [], 
+                                             "contact_handles": [], "relative_pose": {}}, 
+                            "pose": {}, "source_label": None}
             contact_objects_relative_poses = {}
 
             for source_object_candidate in kwargs['contact'][0]:
                 source_contact_info = source_object_candidate.get_contact()
+                # contact_info["contact_info"][source_object_candidate.get_name()] = 
                 
-                # Save pose: source object candidates
-                for source_object_candidate_ in kwargs['contact'][0]:
-                    source_object_handle = source_object_candidate_.get_handle()
-                   
-                    world_quat = sim.simGetObjectQuaternion(source_object_handle, -1)
-                    world_position = sim.simGetObjectPosition(source_object_handle, -1)
-                    world_pose = world_position + world_quat          
-                    contact_info["pose"][source_object_handle] = world_pose
+                world_quat = sim.simGetObjectQuaternion(source_object_handle, -1)
+                world_position = sim.simGetObjectPosition(source_object_handle, -1)
+                world_pose = world_position + world_quat
+                contact_info["pose"][source_object_handle] = world_pose
 
+                cnt_info_i = contact_info["contact_info"]
+                for cnt in source_contact_info:
+                    source_object_handle = cnt["contact_handles"][0]
+                    target_object_handle = cnt["contact_handles"][1]
 
-                # Relative pose between two objects in contact.
-                for source_contact_info_i in source_contact_info:
-                    contact_handles = source_contact_info_i["contact_handles"]
-                    
+                    if target_object_handle not in distractor_labels:
+                        cnt_info_i["target_info"].append(sim.simGetObjectName(target_object_handle))
+                        cnt_info_i["contact"].append(cnt["contact"])
+                        cnt_info_i["contact_handles"].append(cnt["contact_handles"])
 
+                # # Save pose: source object candidates
+                # for source_object_candidate_ in kwargs['contact'][0]:
+                #     source_object_handle = source_object_candidate_.get_handle()
+                #
+                #     world_quat = sim.simGetObjectQuaternion(source_object_handle, -1)
+                #     world_position = sim.simGetObjectPosition(source_object_handle, -1)
+                #     world_pose = world_position + world_quat
+                #     contact_info["pose"][source_object_handle] = world_pose
+                #
+                #
+                # # Relative pose between two objects in contact.
+                # for source_contact_info_i in source_contact_info:
+                    # contact_handles = source_contact_info_i["contact_handles"]
+                #
+                #
                     # Aboslute pose of a source object in contact
-                    world_quat = sim.simGetObjectQuaternion(contact_handles[0], -1)
-                    world_position = sim.simGetObjectPosition(contact_handles[0], -1)
-                    world_pose = world_position + world_quat
 
-
-                    # Relative pose between two objects in contact
-                    relative_quat = sim.simGetObjectQuaternion(contact_handles[0], contact_handles[1])
-                    relative_position = sim.simGetObjectPosition(contact_handles[0], contact_handles[1])
+                #
+                #
+                #     # Relative pose between two objects in contact
+                    relative_quat = sim.simGetObjectQuaternion(source_object_handle, target_object_handle)
+                    relative_position = sim.simGetObjectPosition(source_object_handle, target_object_handle)
                     relative_pose = relative_position + relative_quat
-
-                    if contact_handles[0] not in contact_objects_relative_poses.keys():
-                        contact_objects_relative_poses[contact_handles[0]] = {}
-                    contact_objects_relative_poses[contact_handles[0]][contact_handles[1]] = relative_pose
-
-                    # Save pose: all the objects in interest.
-                    contact_info["pose"][contact_handles[0]] = world_pose
-
-                contact_info["contact_info"][source_object_candidate.get_name()] = source_contact_info
                 
-
-            contact_info["relative_pose"] = contact_objects_relative_poses
-            contact_info["labels"] = labels
+                    if source_object_handle not in contact_objects_relative_poses.keys():
+                        contact_objects_relative_poses[source_object_handle] = {}
+                    contact_objects_relative_poses[source_object_handle][target_object_handle] = relative_pose
+                    cnt_info_i["relative_pose"] = contact_objects_relative_poses
+                #     # Save pose: all the objects in interest.
+            # contact_info["relative_pose"] = contact_objects_relative_poses
+            contact_info["source_label"] = source_label
 
             # distractor object labels - will ignore contact when made here (e.g. broom stand)
-            contact_info["distractor_labels"] = [d.get_handle() for d in kwargs['contact'][2]]
             contact_est = None
 
 

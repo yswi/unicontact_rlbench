@@ -156,20 +156,23 @@ class TaskEnvironment(object):
             #             target = s
             #     except:
             #         pass
-            demo = self._scene.get_demo(callable_each_step=callable_each_step,
-                                    contact=(self._task.tool, 
-                                                self._task.target, 
-                                                self._task.distractors),
-                                    keyframe = False) 
-                        
+
+            # # Get all the object from the scene
+            print("start demo!")
+            # demo = self._scene.get_demo(callable_each_step=callable_each_step,
+            #                         contact=(self._task.tool,
+            #                                     self._task.target,
+            #                                     self._task.distractors),
+            #                         keyframe = False)
             try:
-                print("start demo")
-                # demo = self._scene.get_demo(callable_each_step=callable_each_step,
-                #                         contact=(self._task.tool, 
-                #                                  self._task.target, 
-                #                                  self._task.distractors),
-                #                         keyframe = False) 
+                print("start demo!")
+                demo = self._scene.get_demo(callable_each_step=callable_each_step,
+                                        contact=(self._task.tool,
+                                                 self._task.target,
+                                                 self._task.distractors),
+                                        keyframe = False)
                 demo.random_seed = random_seed
+
                 print("success and return" , demo)
                 return demo
             except:

@@ -172,7 +172,7 @@ class TaskEnvironmentBimanual(object):
             # demo = self._scene.get_demo(callable_each_step=callable_each_step,
             #                             contact=(self._task.tool, target))
             try:
-                print("start demo")
+                # print("start demo")
                 demo = self._scene.get_demo(callable_each_step=callable_each_step,
                                             contact=(self._task.tool, target))
                 demo.random_seed = random_seed

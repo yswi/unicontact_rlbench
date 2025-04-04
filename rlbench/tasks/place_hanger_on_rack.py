@@ -10,6 +10,14 @@ class PlaceHangerOnRack(Task):
 
     def init_task(self) -> None:
         self.hanger_holder = Shape('hanger_holder')
+        self.tool_visual_name = 'clothes_hanger'
+        self.tool_name = ['clothes_hanger', 'Panda_leftfinger_force_contact', 'Panda_rightfinger_respondable']
+        self.target_name = ['clothes_rack']
+        self.distractor_names = ['diningTable', 'hanger_holder', 'hanger_holder0', 'hanger_holder_visual']
+        self.tool = [Shape(tool) for tool in self.tool_name]
+        self.target = [Shape(tool) for tool in self.target_name]
+        self.distractors = [Shape(tool) for tool in self.distractor_names]
+
         hanger = Shape('clothes_hanger')
         success_detector = ProximitySensor('success_detector0')
         self.register_success_conditions([

@@ -78,6 +78,8 @@ class LoadedTask(object):
         task_file = task_file.strip(' ')
         if len(task_file) > 3 and task_file[-3:] != '.py':
             task_file += '.py'
+            
+        task_class = name_to_task_class(task_file)
         try:
             task_class = name_to_task_class(task_file)
         except:

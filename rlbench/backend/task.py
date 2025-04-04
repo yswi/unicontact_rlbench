@@ -355,6 +355,7 @@ class Task(object):
         arm = self.robot.arm
         start_vals = arm.get_joint_positions()
         for i, point in enumerate(waypoints):
+            path = None
             try:
                 path = point.get_path(ignore_collisions=False)
             except ConfigurationPathError as err:
