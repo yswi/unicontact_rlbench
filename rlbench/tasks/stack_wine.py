@@ -11,6 +11,15 @@ class StackWine(Task):
 
     def init_task(self):
         wine_bottle = Shape('wine_bottle')
+        self.tool_visual_name = 'wine_bottle'
+        self.tool_name = ['wine_bottle', 'Panda_leftfinger_force_contact', 'Panda_rightfinger_force_contact']
+        self.target_name = []
+        self.distractor_names = []
+        self.tool = [Shape(tool) for tool in self.tool_name]
+        self.target = [Shape(tool) for tool in self.target_name]
+        self.distractors = [Shape(tool) for tool in self.distractor_names]
+
+
         self.register_graspable_objects([wine_bottle])
         self.register_success_conditions(
             [DetectedCondition(wine_bottle, ProximitySensor('success'))])

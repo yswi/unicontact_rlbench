@@ -40,11 +40,13 @@ if __name__ == '__main__':
 
     env.launch()
     # task = env.get_task(SweepToDustpan)
-    task = env.get_task(PlaceHangerOnRack)
+    # task = env.get_task(PlaceHangerOnRack)
+    # task = env.get_task(StackWine)
+    task = env.get_task(PushButton)
 
-
-    for i in range (5):
+    for i in range (2):
         SAVE_PATH = os.path.abspath( os.path.join(os.path.dirname(__file__), '../../dataset/'))
+        print('saving to ', SAVE_PATH)
         variation_path = os.path.join(SAVE_PATH, task.get_name(), VARIATIONS_ALL_FOLDER)
         episodes_path = os.path.join(variation_path, EPISODES_FOLDER)
         if not os.path.exists(episodes_path):
@@ -59,8 +61,8 @@ if __name__ == '__main__':
         save_demo(scene_data, demos, episode_path, my_variation_count)
 
 
-        print("saved")
-        np.save('demo_sweep_dustpan_%d.npy' % i, demos)
+        # print("saved")
+        # np.save('demo_sweep_dustpan_%d.npy' % i, demos)
 
 
     print('Done')

@@ -87,6 +87,7 @@ def save_demo(scene_data, demo, example_path, variation):
 
     tot_contact_info = {}
     tot_pose_info = {}
+    low_dim_data = {}
     for i, obs in enumerate(demo):
         left_shoulder_rgb = Image.fromarray(obs.left_shoulder_rgb)
         left_shoulder_depth = utils.float_array_to_rgb_image(
@@ -171,6 +172,7 @@ def save_demo(scene_data, demo, example_path, variation):
 
         tot_contact_info[i] = obs.contact_info
         tot_pose_info[i] = obs.object_poses
+        low_dim_data[i] = obs.low_dim_data
 
     # Save camera params & extrinsics
     front_intrinsics = [scene_data['front_camera']['intrinsics'][0,0], 
@@ -218,7 +220,7 @@ def save_demo(scene_data, demo, example_path, variation):
 
     # Save the low-dimension data
     with open(os.path.join(example_path, LOW_DIM_PICKLE), 'wb') as f:
-        pickle.dump(demo, f)
+        pickle.dump(low_dim_data, f)
 
     with open(os.path.join(example_path, VARIATION_NUMBER), 'wb') as f:
         pickle.dump(variation, f)

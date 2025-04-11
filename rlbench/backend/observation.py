@@ -81,6 +81,7 @@ class Observation(object):
         self.gripper_keypoints = gripper_keypoints
         self.object_poses = object_poses
         self.keyframe = keyframe
+        self.low_dim_data = self.get_low_dim_data()
 
     def refine_contact_info(self, contact_info):
         contact_info_refined = {}
@@ -115,7 +116,6 @@ class Observation(object):
                 "pose": contact_info["pose"][source_object_candidate],
                 "labels": contact_info["source_label"],
             }
-
         return contact_info_refined
 
     def get_low_dim_data(self) -> np.ndarray:
@@ -123,11 +123,18 @@ class Observation(object):
 
         :return: 1D array of observations.
         """
-        low_dim_data = [] if self.gripper_open is None else [[self.gripper_open]]
-        for data in [self.joint_velocities, self.joint_positions,
-                     self.joint_forces,
-                     self.gripper_pose, self.gripper_joint_positions,
-                     self.gripper_touch_forces, self.task_low_dim_state]:
-            if data is not None:
-                low_dim_data.append(data)
-        return np.concatenate(low_dim_data) if len(low_dim_data) > 0 else np.array([])
+        # low_dim_data = [] if self.gripper_open is None else [[self.gripper_open]]
+        low_dim_data = {
+            "joint_velocities": self.joint_velocities, 
+            "joint_positions": self.joint_positions,
+            "joint_forces": self.joint_forces,
+            "gripper_pose": self.gripper_pose,
+            "gripper_joint_positions": self.gripper_joint_positions,
+            "gripper_touch_forces": self.gripper_touch_forces,
+            "task_low_dim_state": self.task_low_dim_state,      
+                "keyframe": self.keyframe,
+            "gripper_keypoints": self.gripper_keypoints,
+            "gripper_open": self.gripper_open, 
+        }
+        return low_dim_data
+        # return np.concatenate(low_dim_data) if len(low_dim_data) > 0 else np.array([])

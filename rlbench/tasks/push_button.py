@@ -38,6 +38,18 @@ class PushButton(Task):
         self.target_wrap = Shape('target_button_wrap')
         self.goal_condition = JointCondition(self.joint, 0.003)
 
+        self.tool_visual_name = 'push_button_target'
+        self.tool_name = ['push_button_target', 'Panda_leftfinger_force_contact', 'Panda_rightfinger_force_contact']
+        self.target_name = ['push_button_target']
+        self.distractor_names = []
+
+        self.tool = [Shape(tool) for tool in self.tool_name]
+        self.target = [Shape(tool) for tool in self.target_name]
+        self.distractors = [Shape(tool) for tool in self.distractor_names]
+
+        self.register_graspable_objects([self.tool[0]])
+        self.register_success_conditions([self.goal_condition])
+
     def init_episode(self, index: int) -> List[str]:
         self._variation_index = index
         self.target_topPlate.set_color([1.0, 0.0, 0.0])
